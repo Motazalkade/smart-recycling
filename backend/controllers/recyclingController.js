@@ -40,70 +40,69 @@ const findNearestLocation = (userLat, userLng, itemType) => {
   });
 };
 
-const processRecyclingItem = async (req, res) => {
-  try {
-    const { latitude, longitude } = req.body;
-    const imageFile = req.file;
+      const processRecyclingItem = async (req, res) => {
+        try {
+          const { latitude, longitude } = req.body;
+          const imageFile = req.file; // سيكون undefined إذا لم يكن هناك ملف
 
-    if (!imageFile) {
-      return res.status(400).json({ message: 'الصورة مطلوبة' });
-    }
+          if (!latitude || !longitude) {
+            return res.status(400).json({ message: 'الإحداثيات مطلوبة' });
+          }
 
-    if (!latitude || !longitude) {
-      return res.status(400).json({ message: 'الإحداثيات مطلوبة' });
-    }
+          // محاكاة نظام التعرف على الصور (بدون صورة حالياً)
+          const recognitionResult = simulateRecognition();
+          
+          // العثور على أقرب موقع
+          const nearestLocation = await findNearestLocation(latitude, longitude, recognitionResult.itemType);
 
-    // التعرف على المادة من الصورة
-    const recognitionResult = recognizeItem(imageFile.buffer);
-    
-    // العثور على أقرب موقع
-    const nearestLocation = await findNearestLocation(
-      latitude, 
-      longitude, 
-      recognitionResult.itemType
-    );
-
-    // حفظ المعلومات في قاعدة البيانات
-    db.run(
-      `INSERT INTO recycling_items 
-      (user_id, item_type, image_path, is_recyclable, nearest_location_id) 
-      VALUES (?, ?, ?, ?, ?)`,
-      [
-        req.user.id,
-        recognitionResult.itemType,
-        imageFile.filename,
-        recognitionResult.isRecyclable ? 1 : 0,
-        nearestLocation?.id || null
-      ],
-      function(err) {
-        if (err) {
-          console.error(err);
-          return res.status(500).json({ message: 'خطأ في حفظ البيانات' });
-        }
-
-        // إضافة نقاط للمستخدم إذا كانت المادة قابلة للتدوير
-        if (recognitionResult.isRecyclable) {
-          db.run(
-            'UPDATE users SET points = points + 10 WHERE id = ?',
-            [req.user.id]
+          // حفظ المعلومات في قاعدة البيانات
+          const result = db.run(
+            `INSERT INTO recycling_items 
+            (user_id, item_type, image_path, is_recyclable, nearest_location_id) 
+            VALUES (?, ?, ?, ?, ?)`,
+            [
+              req.user.id,
+              recognitionResult.itemType,
+              imageFile ? imageFile.filename : null,
+              recognitionResult.isRecyclable ? 1 : 0,
+              nearestLocation?.id || null
+            ]
           );
+
+          // إضافة نقاط للمستخدم إذا كانت المادة قابلة للتدوير
+          if (recognitionResult.isRecyclable) {
+            db.run('UPDATE users SET points = points + 10 WHERE id = ?', [req.user.id]);
+          }
+
+          res.json({
+            itemType: recognitionResult.itemType,
+            isRecyclable: recognitionResult.isRecyclable,
+            confidence: recognitionResult.confidence,
+            nearestLocation: nearestLocation,
+            pointsEarned: recognitionResult.isRecyclable ? 10 : 0,
+            message: imageFile ? 'تم معالجة الصورة بنجاح' : 'تم المحاكاة بدون صورة'
+          });
+
+        } catch (error) {
+          console.error('Error processing recycling item:', error);
+          res.status(500).json({ message: 'خطأ في معالجة البيانات' });
         }
+      };
 
-        res.json({
-          itemType: recognitionResult.itemType,
-          isRecyclable: recognitionResult.isRecyclable,
-          confidence: recognitionResult.confidence,
-          nearestLocation: nearestLocation,
-          pointsEarned: recognitionResult.isRecyclable ? 10 : 0
-        });
-      }
-    );
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'خطأ في معالجة الصورة' });
-  }
-};
+      // دالة محاكاة التعرف (بدون TensorFlow حالياً)
+      const simulateRecognition = () => {
+        const recyclableItems = ['plastic_bottle', 'paper', 'glass', 'metal_can'];
+        const nonRecyclableItems = ['plastic_bag', 'food_waste', 'styrofoam'];
+        
+        const allItems = [...recyclableItems, ...nonRecyclableItems];
+        const randomItem = allItems[Math.floor(Math.random() * allItems.length)];
+        
+        return {
+          itemType: randomItem,
+          isRecyclable: recyclableItems.includes(randomItem),
+          confidence: Math.random() * 0.5 + 0.5
+        };
+      };
 
 const getRecyclingLocations = (req, res) => {
   const { lat, lng } = req.query;
