@@ -1,5 +1,4 @@
 const { db } = require('../config/database');
-
 // محاكاة نظام التعرف على الصور
 const recognizeItem = (imageBuffer) => {
   // في التطبيق الحقيقي، هنا نستخدم TensorFlow.js

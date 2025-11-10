@@ -41,6 +41,24 @@ let database = {
       longitude: 50.0888,
       type: 'general',
       created_at: new Date().toISOString()
+    },
+    {
+      id: 4,
+      name: 'جهاز إعادة تدوير المعادن - الرياض',
+      address: 'الرياض، حي العليا',
+      latitude: 24.7616,
+      longitude: 46.6730,
+      type: 'metal',
+      created_at: new Date().toISOString()
+    },
+    {
+      id: 5,
+      name: 'جهاز إعادة تدوير الزجاج - جدة',
+      address: 'جدة، حي السلامة',
+      latitude: 21.5433,
+      longitude: 39.1730,
+      type: 'glass',
+      created_at: new Date().toISOString()
     }
   ],
   recycling_items: []
@@ -48,7 +66,7 @@ let database = {
 
 let nextId = {
   users: 2,
-  recycling_locations: 4,
+  recycling_locations: 6,
   recycling_items: 1
 };
 
@@ -58,21 +76,40 @@ const initDatabase = () => {
 
 // محاكاة دوال SQLite
 const db = {
-  // SELECT查询
-  query: (sql, params = []) => {
-    if (sql.includes('FROM users')) {
-      return database.users;
-    }
+  // SELECT query - للحصول على جميع السجلات
+  all: (sql, params = []) => {
     if (sql.includes('FROM recycling_locations')) {
       return database.recycling_locations;
+    }
+    if (sql.includes('FROM users')) {
+      return database.users;
     }
     if (sql.includes('FROM recycling_items')) {
       return database.recycling_items;
     }
-    if (sql.includes('COUNT(*)')) {
-      return [{ total_items: database.recycling_items.length }];
-    }
     return [];
+  },
+
+  // SELECT query - للحصول على سجلات متعددة
+  query: (sql, params = []) => {
+    return db.all(sql, params);
+  },
+
+  // SELECT single row
+  get: (sql, params = []) => {
+    if (sql.includes('FROM users WHERE email = ?')) {
+      return database.users.find(user => user.email === params[0]);
+    }
+    if (sql.includes('FROM users WHERE id = ?')) {
+      return database.users.find(user => user.id === params[0]);
+    }
+    if (sql.includes('FROM users WHERE username = ?')) {
+      return database.users.find(user => user.username === params[0]);
+    }
+    if (sql.includes('FROM recycling_locations WHERE id = ?')) {
+      return database.recycling_locations.find(loc => loc.id === params[0]);
+    }
+    return null;
   },
 
   // INSERT/UPDATE/DELETE
@@ -105,8 +142,18 @@ const db = {
       return { lastID: newItem.id, changes: 1 };
     }
 
-    if (sql.includes('UPDATE users SET points')) {
+    if (sql.includes('UPDATE users SET points = points + ?')) {
+      const points = params[0];
       const userId = params[1];
+      const user = database.users.find(u => u.id === userId);
+      if (user) {
+        user.points += points;
+        return { changes: 1 };
+      }
+    }
+
+    if (sql.includes('UPDATE users SET points = points + 10')) {
+      const userId = params[0];
       const user = database.users.find(u => u.id === userId);
       if (user) {
         user.points += 10;
@@ -115,20 +162,6 @@ const db = {
     }
 
     return { lastID: 0, changes: 0 };
-  },
-
-  // SELECT single row
-  get: (sql, params = []) => {
-    if (sql.includes('FROM users WHERE email = ?')) {
-      return database.users.find(user => user.email === params[0]);
-    }
-    if (sql.includes('FROM users WHERE id = ?')) {
-      return database.users.find(user => user.id === params[0]);
-    }
-    if (sql.includes('FROM users WHERE username = ?')) {
-      return database.users.find(user => user.username === params[0]);
-    }
-    return null;
   }
 };
 
