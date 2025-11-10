@@ -17,12 +17,17 @@ const simulateRecognition = () => {
 
 const findNearestLocation = async (userLat, userLng, itemType) => {
   try {
-    const locations = db.all('SELECT * FROM recycling_locations WHERE type = ? OR type = ?', [itemType, 'general']);
+    const allLocations = db.all('SELECT * FROM recycling_locations');
     
-    if (locations.length === 0) return null;
+    // تصفية المواقع حسب النوع أو العام
+    const filteredLocations = allLocations.filter(location => 
+      location.type === itemType || location.type === 'general'
+    );
+    
+    if (filteredLocations.length === 0) return null;
     
     // حساب المسافات لجميع المواقع
-    const locationsWithDistance = locations.map(location => {
+    const locationsWithDistance = filteredLocations.map(location => {
       const distance = db.calculateDistance(userLat, userLng, location.latitude, location.longitude);
       return {
         ...location,
@@ -46,6 +51,8 @@ const processRecyclingItem = async (req, res) => {
   try {
     const { latitude, longitude } = req.body;
     const imageFile = req.file;
+
+    console.log('🔄 معالجة مادة جديدة:', { latitude, longitude, user: req.user.id });
 
     if (!latitude || !longitude) {
       return res.status(400).json({ message: 'الإحداثيات مطلوبة' });
@@ -76,17 +83,21 @@ const processRecyclingItem = async (req, res) => {
       db.run('UPDATE users SET points = points + 10 WHERE id = ?', [req.user.id]);
     }
 
-    res.json({
+    const response = {
       itemType: recognitionResult.itemType,
       isRecyclable: recognitionResult.isRecyclable,
       confidence: recognitionResult.confidence,
       nearestLocation: nearestLocation,
       pointsEarned: recognitionResult.isRecyclable ? 10 : 0,
       message: imageFile ? 'تم معالجة الصورة بنجاح' : 'تم المحاكاة بدون صورة'
-    });
+    };
+
+    console.log('✅ تم معالجة المادة:', response);
+
+    res.json(response);
 
   } catch (error) {
-    console.error('Error processing recycling item:', error);
+    console.error('❌ خطأ في معالجة المادة:', error);
     res.status(500).json({ message: 'خطأ في معالجة البيانات' });
   }
 };
@@ -94,6 +105,8 @@ const processRecyclingItem = async (req, res) => {
 const getRecyclingLocations = (req, res) => {
   try {
     const { lat, lng } = req.query;
+    
+    console.log('🗺️ جلب مواقع التدوير:', { lat, lng });
     
     // الحصول على جميع المواقع
     const locations = db.all('SELECT * FROM recycling_locations');
@@ -113,12 +126,14 @@ const getRecyclingLocations = (req, res) => {
       
       // ترتيب حسب المسافة
       locationsWithDistance.sort((a, b) => a.distance - b.distance);
+      console.log('✅ تم جلب المواقع مع المسافات:', locationsWithDistance.length);
       return res.json(locationsWithDistance);
     }
     
+    console.log('✅ تم جلب جميع المواقع:', locations.length);
     res.json(locations);
   } catch (error) {
-    console.error('Error fetching locations:', error);
+    console.error('❌ خطأ في جلب المواقع:', error);
     res.status(500).json({ message: 'خطأ في جلب المواقع' });
   }
 };
@@ -126,6 +141,8 @@ const getRecyclingLocations = (req, res) => {
 const getUserHistory = (req, res) => {
   try {
     const userId = req.user.id;
+    
+    console.log('📋 جلب سجل المستخدم:', userId);
     
     // الحصول على سجل المستخدم
     const userItems = db.all(
@@ -137,9 +154,10 @@ const getUserHistory = (req, res) => {
       [userId]
     );
     
+    console.log('✅ تم جلب سجل المستخدم:', userItems.length, 'عناصر');
     res.json(userItems);
   } catch (error) {
-    console.error('Error fetching user history:', error);
+    console.error('❌ خطأ في جلب السجل:', error);
     res.status(500).json({ message: 'خطأ في جلب السجل' });
   }
 };

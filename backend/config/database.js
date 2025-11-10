@@ -103,15 +103,45 @@ const db = {
         return database.recycling_items;
       }
       
+      // استعلامات JOIN
+      if (sql.includes('ri.*, rl.name as location_name, rl.address')) {
+        const userId = params[0];
+        const userItems = database.recycling_items.filter(item => item.user_id === userId);
+        
+        return userItems.map(item => {
+          const location = database.recycling_locations.find(loc => loc.id === item.nearest_location_id);
+          return {
+            ...item,
+            location_name: location ? location.name : null,
+            address: location ? location.address : null
+          };
+        });
+      }
+      
       // استعلامات إحصائية
       if (sql.includes('COUNT(*) as total_items')) {
         const userId = params[0];
         const userItems = database.recycling_items.filter(item => item.user_id === userId);
+        const user = database.users.find(u => u.id === userId);
+        
         return [{
           total_items: userItems.length,
-          recyclable_items: userItems.filter(item => item.is_recyclable).length,
-          total_points: database.users.find(user => user.id === userId)?.points || 0
+          recyclable_items: userItems.filter(item => item.is_recyclable === 1).length,
+          total_points: user ? user.points : 0
         }];
+      }
+      
+      // استعلام إحصائي للمستخدم
+      if (sql.includes('u.points as total_points')) {
+        const userId = params[0];
+        const user = database.users.find(u => u.id === userId);
+        const userItems = database.recycling_items.filter(item => item.user_id === userId);
+        
+        return {
+          total_points: user ? user.points : 0,
+          total_items: userItems.length,
+          recyclable_items: userItems.filter(item => item.is_recyclable === 1).length
+        };
       }
       
       return [];
@@ -141,18 +171,11 @@ const db = {
       if (sql.includes('FROM recycling_locations WHERE id = ?')) {
         return database.recycling_locations.find(loc => loc.id === params[0]);
       }
-      
-      // استعلامات إحصائية
-      if (sql.includes('SELECT u.points as total_points')) {
-        const userId = params[0];
-        const user = database.users.find(u => u.id === userId);
-        const userItems = database.recycling_items.filter(item => item.user_id === userId);
-        
-        return {
-          total_points: user?.points || 0,
-          total_items: userItems.length,
-          recyclable_items: userItems.filter(item => item.is_recyclable).length
-        };
+      if (sql.includes('id FROM users WHERE email = ? OR username = ?')) {
+        return database.users.find(user => user.email === params[0] || user.username === params[1]);
+      }
+      if (sql.includes('SELECT * FROM users WHERE id = ?')) {
+        return database.users.find(user => user.id === params[0]);
       }
       
       return null;
@@ -165,6 +188,7 @@ const db = {
   // INSERT/UPDATE/DELETE
   run: (sql, params = []) => {
     try {
+      // INSERT INTO users
       if (sql.includes('INSERT INTO users')) {
         const newUser = {
           id: nextId.users++,
@@ -179,13 +203,14 @@ const db = {
         return { lastID: newUser.id, changes: 1 };
       }
 
+      // INSERT INTO recycling_items
       if (sql.includes('INSERT INTO recycling_items')) {
         const newItem = {
           id: nextId.recycling_items++,
           user_id: params[0],
           item_type: params[1],
           image_path: params[2],
-          is_recyclable: params[3] ? 1 : 0,
+          is_recyclable: params[3],
           nearest_location_id: params[4],
           created_at: new Date().toISOString()
         };
@@ -193,6 +218,7 @@ const db = {
         return { lastID: newItem.id, changes: 1 };
       }
 
+      // UPDATE users SET points = points + ?
       if (sql.includes('UPDATE users SET points = points + ?')) {
         const points = params[0];
         const userId = params[1];
@@ -203,6 +229,7 @@ const db = {
         }
       }
 
+      // UPDATE users SET points = points + 10
       if (sql.includes('UPDATE users SET points = points + 10')) {
         const userId = params[0];
         const user = database.users.find(u => u.id === userId);
