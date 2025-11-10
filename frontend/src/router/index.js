@@ -41,11 +41,16 @@ const routes = [
     name: 'admin',
     component: () => import('../views/Admin.vue'),
     meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('../views/NotFound.vue')
   }
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(process.env.BASE_URL),
   routes
 })
 
@@ -55,18 +60,15 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && !isAuthenticated) {
     next('/login')
   } else if (isAuthenticated) {
-    // إذا كان المستخدم مسجل دخول
     const userLanguage = localStorage.getItem('userLanguage')
     
     if (to.name === 'welcome') {
-      // إذا كان في صفحة الترحيب واختار اللغة مسبقاً، اذهب للرئيسية
       if (userLanguage) {
         next('/')
       } else {
         next()
       }
     } else {
-      // إذا كان يحاول الدخول لأي صفحة أخرى ولم يختر اللغة بعد، اذهب لصفحة الترحيب
       if (!userLanguage && to.name !== 'welcome') {
         next('/welcome')
       } else {
