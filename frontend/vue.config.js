@@ -2,12 +2,7 @@ const { defineConfig } = require('@vue/cli-service')
 
 module.exports = defineConfig({
   transpileDependencies: true,
-  publicPath: '/',
+  publicPath: './', // استخدم ./ بدلاً من /
   outputDir: 'dist',
-  assetsDir: 'static',
-  // إعداد مهم للـ History Mode على الاستضافة
-  devServer: {
-    historyApiFallback: true,
-    allowedHosts: 'all'
-  }
+  assetsDir: 'static'
 })
