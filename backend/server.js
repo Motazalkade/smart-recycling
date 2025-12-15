@@ -8,6 +8,9 @@ const app = express();
 // زيادة حجم الـ payload للصور
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+// خدمة الملفات المرفوعة
+const { serveUploadedFile } = require('./middleware/upload');
+app.get('/uploads/:filename', serveUploadedFile);
 
 // CORS شاملة
 app.use(cors({
