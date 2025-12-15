@@ -63,58 +63,74 @@ const register = async (req, res) => {
   }
 };
 
-const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
+const login = (req, res) => {
+  console.log('🔐 طلب تسجيل دخول:', req.body);
+  
+  const { email, password } = req.body;
 
-    console.log('🔐 محاولة تسجيل دخول:', { email });
+  if (!email || !password) {
+    console.log('❌ بيانات ناقصة:', { email: !!email, password: !!password });
+    return res.status(400).json({ 
+      message: 'البريد الإلكتروني وكلمة المرور مطلوبان',
+      received: { email: !!email, password: !!password }
+    });
+  }
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'البريد الإلكتروني وكلمة المرور مطلوبان' });
+  console.log('🔍 البحث عن المستخدم:', email);
+
+  db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
+    if (err) {
+      console.error('❌ خطأ قاعدة بيانات:', err);
+      return res.status(500).json({ message: 'خطأ في الخادم' });
     }
-
-    const user = db.get('SELECT * FROM users WHERE email = ?', [email]);
 
     if (!user) {
-      return res.status(400).json({ message: 'بيانات الدخول غير صحيحة' });
+      console.log('❌ مستخدم غير موجود:', email);
+      return res.status(400).json({ 
+        message: 'بيانات الدخول غير صحيحة',
+        hint: 'جرب admin@recycling.com / admin123'
+      });
     }
+
+    console.log('✅ وجد المستخدم:', user.email);
 
     // التحقق من كلمة المرور
-    const isMatch = await bcrypt.compare(password, user.password);
-    
-    if (!isMatch) {
-      return res.status(400).json({ message: 'بيانات الدخول غير صحيحة' });
-    }
+    bcrypt.compare(password, user.password, (err, isMatch) => {
+      if (err || !isMatch) {
+        console.log('❌ كلمة مرور خاطئة');
+        return res.status(400).json({ 
+          message: 'بيانات الدخول غير صحيحة',
+          hint: 'كلمة المرور غير صحيحة'
+        });
+      }
 
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET || 'secret',
-      { expiresIn: '7d' }
-    );
+      console.log('✅ كلمة المرور صحيحة');
 
-    // إرجاع بيانات المستخدم بدون كلمة المرور
-    const userWithoutPassword = {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      points: user.points
-    };
+      const token = jwt.sign(
+        { userId: user.id },
+        process.env.JWT_SECRET || 'smart_recycling_secret',
+        { expiresIn: '7d' }
+      );
 
-    console.log('✅ تم تسجيل الدخول بنجاح:', userWithoutPassword);
+      const userResponse = {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        points: user.points,
+        created_at: user.created_at
+      };
 
-    res.json({
-      message: 'تم الدخول بنجاح',
-      token,
-      user: userWithoutPassword
+      console.log('✅ تسجيل دخول ناجح:', userResponse.email);
+      
+      res.json({
+        message: 'تم الدخول بنجاح',
+        token,
+        user: userResponse
+      });
     });
-
-  } catch (error) {
-    console.error('❌ خطأ في تسجيل الدخول:', error);
-    res.status(500).json({ message: 'حدث خطأ أثناء تسجيل الدخول' });
-  }
+  });
 };
-
 const getProfile = (req, res) => {
   res.json(req.user);
 };
