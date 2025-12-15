@@ -1,253 +1,97 @@
-// database-memory.js - قاعدة بيانات مؤقتة في الذاكرة
-const bcrypt = require('bcryptjs');
+const { Pool } = require('pg');
 
-// قاعدة بيانات في الذاكرة
-let database = {
-  users: [
-    {
-      id: 1,
-      username: 'admin',
-      email: 'admin@recycling.com',
-      password: bcrypt.hashSync('admin123', 10),
-      role: 'admin',
-      points: 0,
-      created_at: new Date().toISOString()
+// رابط قاعدة البيانات من Environment Variable أو الرابط الذي حصلت عليه
+const connectionString = process.env.DATABASE_URL || 
+  'postgresql://smart_recycling_db_user:ibRJFAX0sIoJQ5zTUN7P6n5r1VGTf17N@dpg-d5084pu3jp1c73f34gu0-a.oregon-postgres.render.com/smart_recycling_db';
+
+const pool = new Pool({
+  connectionString: connectionString,
+  ssl: {
+    rejectUnauthorized: false  // ضروري لـ Render PostgreSQL
+  }
+});
+
+const initDatabase = async () => {
+  try {
+    console.log('🔗 محاولة الاتصال بقاعدة PostgreSQL...');
+    
+    // اختبار الاتصال
+    const client = await pool.connect();
+    console.log('✅ تم الاتصال بقاعدة PostgreSQL بنجاح');
+    client.release();
+
+    // إنشاء الجداول إذا لم تكن موجودة
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(20) DEFAULT 'user',
+        points INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS recycling_locations (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        address TEXT NOT NULL,
+        latitude DECIMAL(10, 8) NOT NULL,
+        longitude DECIMAL(11, 8) NOT NULL,
+        type VARCHAR(20) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS recycling_items (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        item_type VARCHAR(50) NOT NULL,
+        image_path VARCHAR(255),
+        is_recyclable BOOLEAN NOT NULL,
+        nearest_location_id INTEGER REFERENCES recycling_locations(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    console.log('✅ تم إنشاء/التأكد من الجداول');
+
+    // إضافة بيانات أولية لمواقع التدوير
+    const locations = [
+      ['جهاز إعادة تدوير البلاستيك - الرياض', 'الرياض، حي الملز', 24.7136, 46.6753, 'plastic'],
+      ['جهاز إعادة تدوير الورق - جدة', 'جدة، حي الصفا', 21.4858, 39.1925, 'paper'],
+      ['جهاز إعادة تدوير عام - الدمام', 'الدمام، حي الشاطئ', 26.4207, 50.0888, 'general'],
+      ['جهاز إعادة تدوير المعادن - الرياض', 'الرياض، حي العليا', 24.7616, 46.6730, 'metal'],
+      ['جهاز إعادة تدوير الزجاج - جدة', 'جدة، حي السلامة', 21.5433, 39.1730, 'glass']
+    ];
+
+    for (const loc of locations) {
+      await pool.query(
+        `INSERT INTO recycling_locations (name, address, latitude, longitude, type) 
+         VALUES ($1, $2, $3, $4, $5) 
+         ON CONFLICT (name) DO NOTHING`,
+        loc
+      );
     }
-  ],
-  recycling_locations: [
-    {
-      id: 1,
-      name: 'جهاز إعادة تدوير البلاستيك - الرياض',
-      address: 'الرياض، حي الملز',
-      latitude: 24.7136,
-      longitude: 46.6753,
-      type: 'plastic',
-      created_at: new Date().toISOString()
-    },
-    {
-      id: 2,
-      name: 'جهاز إعادة تدوير الورق - جدة',
-      address: 'جدة، حي الصفا',
-      latitude: 21.4858,
-      longitude: 39.1925,
-      type: 'paper',
-      created_at: new Date().toISOString()
-    },
-    {
-      id: 3,
-      name: 'جهاز إعادة تدوير عام - الدمام',
-      address: 'الدمام، حي الشاطئ',
-      latitude: 26.4207,
-      longitude: 50.0888,
-      type: 'general',
-      created_at: new Date().toISOString()
-    },
-    {
-      id: 4,
-      name: 'جهاز إعادة تدوير المعادن - الرياض',
-      address: 'الرياض، حي العليا',
-      latitude: 24.7616,
-      longitude: 46.6730,
-      type: 'metal',
-      created_at: new Date().toISOString()
-    },
-    {
-      id: 5,
-      name: 'جهاز إعادة تدوير الزجاج - جدة',
-      address: 'جدة، حي السلامة',
-      latitude: 21.5433,
-      longitude: 39.1730,
-      type: 'glass',
-      created_at: new Date().toISOString()
-    }
-  ],
-  recycling_items: []
+
+    console.log('✅ تم إضافة مواقع التدوير');
+
+    // إضافة مستخدم مدير افتراضي
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    
+    await pool.query(
+      `INSERT INTO users (username, email, password, role) 
+       VALUES ($1, $2, $3, $4) 
+       ON CONFLICT (email) DO NOTHING`,
+      ['admin', 'admin@recycling.com', hashedPassword, 'admin']
+    );
+
+    console.log('✅ قاعدة البيانات مهيأة بالكامل مع PostgreSQL');
+
+  } catch (error) {
+    console.error('❌ خطأ في تهيئة قاعدة البيانات:', error.message);
+    console.error('تفاصيل الخطأ:', error);
+  }
 };
 
-let nextId = {
-  users: 2,
-  recycling_locations: 6,
-  recycling_items: 1
-};
-
-const initDatabase = () => {
-  console.log('✅ تم تهيئة قاعدة البيانات في الذاكرة');
-};
-
-// دالة حساب المسافة
-const calculateDistance = (lat1, lng1, lat2, lng2) => {
-  const R = 6371; // نصف قطر الأرض بالكيلومتر
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLng/2) * Math.sin(dLng/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  const distance = R * c;
-  return distance.toFixed(1);
-};
-
-// محاكاة دوال SQLite
-const db = {
-  // SELECT query - للحصول على جميع السجلات
-  all: (sql, params = []) => {
-    try {
-      if (sql.includes('FROM recycling_locations')) {
-        return database.recycling_locations;
-      }
-      if (sql.includes('FROM users')) {
-        return database.users;
-      }
-      if (sql.includes('FROM recycling_items')) {
-        return database.recycling_items;
-      }
-      
-      // استعلامات JOIN
-      if (sql.includes('ri.*, rl.name as location_name, rl.address')) {
-        const userId = params[0];
-        const userItems = database.recycling_items.filter(item => item.user_id === userId);
-        
-        return userItems.map(item => {
-          const location = database.recycling_locations.find(loc => loc.id === item.nearest_location_id);
-          return {
-            ...item,
-            location_name: location ? location.name : null,
-            address: location ? location.address : null
-          };
-        });
-      }
-      
-      // استعلامات إحصائية
-      if (sql.includes('COUNT(*) as total_items')) {
-        const userId = params[0];
-        const userItems = database.recycling_items.filter(item => item.user_id === userId);
-        const user = database.users.find(u => u.id === userId);
-        
-        return [{
-          total_items: userItems.length,
-          recyclable_items: userItems.filter(item => item.is_recyclable === 1).length,
-          total_points: user ? user.points : 0
-        }];
-      }
-      
-      // استعلام إحصائي للمستخدم
-      if (sql.includes('u.points as total_points')) {
-        const userId = params[0];
-        const user = database.users.find(u => u.id === userId);
-        const userItems = database.recycling_items.filter(item => item.user_id === userId);
-        
-        return {
-          total_points: user ? user.points : 0,
-          total_items: userItems.length,
-          recyclable_items: userItems.filter(item => item.is_recyclable === 1).length
-        };
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Error in db.all:', error);
-      return [];
-    }
-  },
-
-  // SELECT query - للحصول على سجلات متعددة
-  query: (sql, params = []) => {
-    return db.all(sql, params);
-  },
-
-  // SELECT single row
-  get: (sql, params = []) => {
-    try {
-      if (sql.includes('FROM users WHERE email = ?')) {
-        return database.users.find(user => user.email === params[0]);
-      }
-      if (sql.includes('FROM users WHERE id = ?')) {
-        return database.users.find(user => user.id === params[0]);
-      }
-      if (sql.includes('FROM users WHERE username = ?')) {
-        return database.users.find(user => user.username === params[0]);
-      }
-      if (sql.includes('FROM recycling_locations WHERE id = ?')) {
-        return database.recycling_locations.find(loc => loc.id === params[0]);
-      }
-      if (sql.includes('id FROM users WHERE email = ? OR username = ?')) {
-        return database.users.find(user => user.email === params[0] || user.username === params[1]);
-      }
-      if (sql.includes('SELECT * FROM users WHERE id = ?')) {
-        return database.users.find(user => user.id === params[0]);
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error in db.get:', error);
-      return null;
-    }
-  },
-
-  // INSERT/UPDATE/DELETE
-  run: (sql, params = []) => {
-    try {
-      // INSERT INTO users
-      if (sql.includes('INSERT INTO users')) {
-        const newUser = {
-          id: nextId.users++,
-          username: params[0],
-          email: params[1],
-          password: params[2],
-          role: 'user',
-          points: 0,
-          created_at: new Date().toISOString()
-        };
-        database.users.push(newUser);
-        return { lastID: newUser.id, changes: 1 };
-      }
-
-      // INSERT INTO recycling_items
-      if (sql.includes('INSERT INTO recycling_items')) {
-        const newItem = {
-          id: nextId.recycling_items++,
-          user_id: params[0],
-          item_type: params[1],
-          image_path: params[2],
-          is_recyclable: params[3],
-          nearest_location_id: params[4],
-          created_at: new Date().toISOString()
-        };
-        database.recycling_items.push(newItem);
-        return { lastID: newItem.id, changes: 1 };
-      }
-
-      // UPDATE users SET points = points + ?
-      if (sql.includes('UPDATE users SET points = points + ?')) {
-        const points = params[0];
-        const userId = params[1];
-        const user = database.users.find(u => u.id === userId);
-        if (user) {
-          user.points += points;
-          return { changes: 1 };
-        }
-      }
-
-      // UPDATE users SET points = points + 10
-      if (sql.includes('UPDATE users SET points = points + 10')) {
-        const userId = params[0];
-        const user = database.users.find(u => u.id === userId);
-        if (user) {
-          user.points += 10;
-          return { changes: 1 };
-        }
-      }
-
-      return { lastID: 0, changes: 0 };
-    } catch (error) {
-      console.error('Error in db.run:', error);
-      return { lastID: 0, changes: 0 };
-    }
-  },
-  
-  // دالة مساعدة لحساب المسافة
-  calculateDistance
-};
-
-module.exports = { db, initDatabase };
+module.exports = { pool, initDatabase };

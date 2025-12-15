@@ -1,21 +1,18 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db } = require('../config/database');
+const { pool } = require('../config/database');
 
 const register = async (req, res) => {
+  const { username, email, password } = req.body;
+
   try {
-    const { username, email, password } = req.body;
+    // التحقق من وجود المستخدم
+    const userCheck = await pool.query(
+      'SELECT id FROM users WHERE email = $1 OR username = $2',
+      [email, username]
+    );
 
-    console.log('📝 محاولة تسجيل مستخدم جديد:', { username, email });
-
-    if (!username || !email || !password) {
-      return res.status(400).json({ message: 'جميع الحقول مطلوبة' });
-    }
-
-    // التحقق من وجود المستخدم مسبقاً
-    const existingUser = db.get('SELECT id FROM users WHERE email = ? OR username = ?', [email, username]);
-    
-    if (existingUser) {
+    if (userCheck.rows.length > 0) {
       return res.status(400).json({ message: 'المستخدم موجود مسبقاً' });
     }
 
@@ -23,65 +20,50 @@ const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // إضافة المستخدم الجديد
-    const result = db.run(
-      'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
+    const result = await pool.query(
+      `INSERT INTO users (username, email, password) 
+       VALUES ($1, $2, $3) 
+       RETURNING id, username, email, role, points, created_at`,
       [username, email, hashedPassword]
     );
 
-    console.log('✅ نتيجة إضافة المستخدم:', result);
-
-    if (!result || result.changes === 0) {
-      return res.status(500).json({ message: 'خطأ في إنشاء المستخدم' });
-    }
-
+    const user = result.rows[0];
     const token = jwt.sign(
-      { userId: result.lastID },
+      { userId: user.id },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '7d' }
     );
 
-    // الحصول على بيانات المستخدم الجديد بدون كلمة المرور
-    const newUser = {
-      id: result.lastID,
-      username: username,
-      email: email,
-      role: 'user',
-      points: 0
-    };
-
-    console.log('🎉 تم إنشاء المستخدم بنجاح:', newUser);
-
     res.status(201).json({
       message: 'تم إنشاء الحساب بنجاح',
       token,
-      user: newUser
+      user
     });
 
   } catch (error) {
-    console.error('❌ خطأ في التسجيل:', error);
-    res.status(500).json({ message: 'حدث خطأ أثناء التسجيل' });
+    console.error('Register error:', error);
+    res.status(500).json({ message: 'خطأ في الخادم' });
   }
 };
 
 const login = async (req, res) => {
+  const { email, password } = req.body;
+
   try {
-    const { email, password } = req.body;
+    // البحث عن المستخدم
+    const result = await pool.query(
+      'SELECT * FROM users WHERE email = $1',
+      [email]
+    );
 
-    console.log('🔐 محاولة تسجيل دخول:', { email });
-
-    if (!email || !password) {
-      return res.status(400).json({ message: 'البريد الإلكتروني وكلمة المرور مطلوبان' });
-    }
-
-    const user = db.get('SELECT * FROM users WHERE email = ?', [email]);
-
-    if (!user) {
+    if (result.rows.length === 0) {
       return res.status(400).json({ message: 'بيانات الدخول غير صحيحة' });
     }
 
+    const user = result.rows[0];
+
     // التحقق من كلمة المرور
     const isMatch = await bcrypt.compare(password, user.password);
-    
     if (!isMatch) {
       return res.status(400).json({ message: 'بيانات الدخول غير صحيحة' });
     }
@@ -92,31 +74,41 @@ const login = async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    // إرجاع بيانات المستخدم بدون كلمة المرور
-    const userWithoutPassword = {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      points: user.points
-    };
-
-    console.log('✅ تم تسجيل الدخول بنجاح:', userWithoutPassword);
-
     res.json({
       message: 'تم الدخول بنجاح',
       token,
-      user: userWithoutPassword
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        points: user.points,
+        created_at: user.created_at
+      }
     });
 
   } catch (error) {
-    console.error('❌ خطأ في تسجيل الدخول:', error);
-    res.status(500).json({ message: 'حدث خطأ أثناء تسجيل الدخول' });
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'خطأ في الخادم' });
   }
 };
 
-const getProfile = (req, res) => {
-  res.json(req.user);
+const getProfile = async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, email, role, points, created_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'المستخدم غير موجود' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({ message: 'خطأ في الخادم' });
+  }
 };
 
 module.exports = { register, login, getProfile };
