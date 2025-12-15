@@ -48,62 +48,98 @@ const findNearestLocation = async (userLat, userLng, itemType) => {
 };
 
 const processRecyclingItem = async (req, res) => {
-  console.log('🔄 === معالجة صورة جديدة ===');
-  console.log('📝 Body:', req.body);
-  console.log('📁 File:', req.file ? `نعم (${req.file.size} bytes)` : 'لا');
-  console.log('👤 User ID:', req.user?.id || 'غير معروف');
+  console.log('🎯 === بدء معالجة طلب جديد ===');
+  console.log('📦 Request Body:', req.body);
+  console.log('📁 File:', req.file ? {
+    filename: req.file.filename,
+    size: req.file.size,
+    mimetype: req.file.mimetype
+  } : 'لا يوجد ملف');
+  console.log('👤 User:', req.user?.id);
   
   try {
-    // تأخير محاكاة للمعالجة (2 ثانية)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // تأخير بسيط لمحاكاة المعالجة
+    await new Promise(resolve => setTimeout(resolve, 1500));
     
-    // نتيجة محاكاة مباشرة
+    // أنواع المواد
+    const materials = [
+      { type: 'plastic_bottle', name: 'زجاجة بلاستيكية', recyclable: true },
+      { type: 'paper', name: 'ورق', recyclable: true },
+      { type: 'glass', name: 'زجاج', recyclable: true },
+      { type: 'metal_can', name: 'علبة معدنية', recyclable: true },
+      { type: 'plastic_bag', name: 'كيس بلاستيكي', recyclable: false }
+    ];
+    
+    // اختيار مادة عشوائية
+    const randomMaterial = materials[Math.floor(Math.random() * materials.length)];
+    
+    // المواقع المتاحة
+    const locations = [
+      { id: 1, name: 'جهاز إعادة تدوير البلاستيك - الرياض', address: 'الرياض، حي الملز', lat: 24.7136, lng: 46.6753, type: 'plastic' },
+      { id: 2, name: 'جهاز إعادة تدوير الورق - جدة', address: 'جدة، حي الصفا', lat: 21.4858, lng: 39.1925, type: 'paper' },
+      { id: 3, name: 'جهاز إعادة تدوير الزجاج - الرياض', address: 'الرياض، حي العليا', lat: 24.7616, lng: 46.673, type: 'glass' }
+    ];
+    
+    // العثور على موقع مناسب
+    const suitableLocation = locations.find(loc => loc.type === randomMaterial.type) || locations[0];
+    
+    // حساب مسافة عشوائية
+    const distance = (Math.random() * 5 + 0.5).toFixed(1);
+    
+    // إنشاء النتيجة
     const result = {
-      itemType: 'plastic_bottle',
-      itemName: 'زجاجة بلاستيكية',
-      isRecyclable: true,
-      confidence: 0.92,
+      itemType: randomMaterial.type,
+      itemName: randomMaterial.name,
+      isRecyclable: randomMaterial.recyclable,
+      confidence: 0.85 + (Math.random() * 0.1), // بين 0.85 و 0.95
       nearestLocation: {
-        id: 1,
-        name: 'جهاز إعادة تدوير البلاستيك - الرياض',
-        address: 'الرياض، حي الملز',
-        latitude: 24.7136,
-        longitude: 46.6753,
-        distance: '1.5 كم'
+        id: suitableLocation.id,
+        name: suitableLocation.name,
+        address: suitableLocation.address,
+        latitude: suitableLocation.lat,
+        longitude: suitableLocation.lng,
+        distance: `${distance} كم`,
+        type: suitableLocation.type
       },
-      pointsEarned: 10,
+      pointsEarned: randomMaterial.recyclable ? 10 : 0,
       timestamp: new Date().toISOString(),
+      processingTime: '1.5 ثانية',
       debug: {
         hasFile: !!req.file,
-        fileSize: req.file ? req.file.size : 0,
+        fileSize: req.file?.size || 0,
         userId: req.user?.id,
-        backend: 'Render',
+        backend: 'Render.com',
         status: 'success'
       }
     };
     
     console.log('✅ تم إنشاء النتيجة:', result);
+    
+    // إرجاع النتيجة فوراً
     res.json(result);
     
   } catch (error) {
-    console.error('❌ خطأ:', error);
+    console.error('❌ خطأ في المعالجة:', error);
     
-    // حتى مع الخطأ، أعد نتيجة
+    // حتى في حالة الخطأ، أعد نتيجة
     res.status(200).json({
-      itemType: 'paper',
+      itemType: 'plastic_bottle',
+      itemName: 'زجاجة بلاستيكية',
       isRecyclable: true,
-      confidence: 0.85,
+      confidence: 0.9,
       nearestLocation: {
-        id: 2,
-        name: 'جهاز إعادة تدوير الورق - جدة',
-        address: 'جدة، حي الصفا',
-        latitude: 21.4858,
-        longitude: 39.1925,
-        distance: '3.2 كم'
+        id: 1,
+        name: 'نظام الطوارئ',
+        address: 'الموقع الافتراضي',
+        latitude: 24.7136,
+        longitude: 46.6753,
+        distance: '1.0 كم',
+        type: 'plastic'
       },
       pointsEarned: 10,
       emergencyMode: true,
-      message: 'نظام الطوارئ يعمل'
+      message: 'النظام يعمل في وضع الطوارئ',
+      timestamp: new Date().toISOString()
     });
   }
 };

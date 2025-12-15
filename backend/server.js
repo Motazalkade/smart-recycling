@@ -5,6 +5,30 @@ const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
+// زيادة حجم الـ payload للصور
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// CORS شاملة
+app.use(cors({
+  origin: [
+    'https://smart-recycling.netlify.app',
+    'https://smart-recycling-o4et.onrender.com',
+    'http://localhost:8080'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+}));
+
+// معالجة طلبات OPTIONS
+app.options('*', cors());
+
+// Logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  next();
+});
 
 // ==================== CORS إصلاح شامل لـ ====================
 app.use(cors({
@@ -180,3 +204,9 @@ const startServer = async () => {
 };
 
 startServer();
+
+
+
+
+           
+          
