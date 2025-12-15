@@ -1,38 +1,26 @@
-// upload-basic.js - middleware بسيط لرفع الملفات
+const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 
-// إنشاء مجلد uploads إذا لم يكن موجوداً
-const uploadDir = 'uploads';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// تأكد من وجود المجلد
+const uploadsDir = path.join(__dirname, '../uploads');
+const fs = require('fs');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const handleFileUpload = (req, res, next) => {
-  if (!req.files || !req.files.image) {
-    return next();
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
+    cb(null, uniqueName);
   }
+});
 
-  const file = req.files.image;
-  const fileExt = path.extname(file.name);
-  const fileName = 'recycling-' + Date.now() + fileExt;
-  const filePath = path.join(uploadDir, fileName);
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+});
 
-  // حفظ الملف
-  file.mv(filePath, (err) => {
-    if (err) {
-      console.error('Error saving file:', err);
-      return next();
-    }
-    
-    req.file = {
-      filename: fileName,
-      path: filePath,
-      size: file.size,
-      mimetype: file.mimetype
-    };
-    next();
-  });
-};
-
-module.exports = handleFileUpload;
+module.exports = upload;
